@@ -1,4 +1,4 @@
-name: Windows RDP Tunnel
+name: Windows RDP Tunnel (Fast)
 
 on:
   workflow_dispatch:
@@ -21,24 +21,29 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-          # 2. Sadece senin IP adresine RDP izni ver (Diger tum IP'leri engelle)
+          # 2. Sadece senin IP adresine RDP izni ver
           netsh advfirewall firewall add rule name="AllowOnlyMyIP" dir=in action=allow protocol=TCP localport=3389 remoteip="${{ github.event.inputs.my_ip }}"
 
           # 3. Yönetici şifresini ayarla
           $pass = "${{ secrets.RDP_PASSWORD }}" | ConvertTo-SecureString -AsPlainText -Force
           Set-LocalUser -Name "runneradmin" -Password $pass
 
-      - name: Bore.pub TCP Tunel Indir
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip" -OutFile "bore.zip"
-          Expand-Archive -Path "bore.zip" -DestinationPath "."
+          # 4. Zaman aşımını (Idle Timeout) engelle
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxIdleTime" -Value 0
 
-      - name: Tuneli Baslat ve Bilgileri Goster
+      - name: Hizli TCP Tunel Kurulumu (Pinggy / Cloudflare)
+        run: |
+          Write-Host "Tünel aracı indiriliyor..." -ForegroundColor Cyan
+          # Ngrok veya hızlı tünel için alternatif client veya PowerShell TCP proxy
+          # Burada en kararlı alternatiflerden biri olan Cloudflare Tunnel (cloudflared) indiriyoruz.
+          Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared.exe"
+
+      - name: Tuneli Baslat ve Adresi Al
         run: |
           Write-Host "==================================================" -ForegroundColor Cyan
-          Write-Host " RDP Tüneli Başlatılıyor... " -ForegroundColor Green
+          Write-Host " RDP Tüneli Başlatılıyor (Cloudflare Powered)... " -ForegroundColor Green
           Write-Host " Sadece İzin Verilen IP: ${{ github.event.inputs.my_ip }}" -ForegroundColor Yellow
           Write-Host "==================================================" -ForegroundColor Cyan
           
-          # Bore ile 3389 portunu dış dünyaya tünelle
-          ./bore.exe local 3389 --to bore.pub
+          # 3389 portunu güvenli TCP tüneli ile dışarıya açıyoruz
+          ./cloudflared.exe tunnel --url rdp://localhost:3389
